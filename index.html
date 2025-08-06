@@ -1,0 +1,48 @@
+<!DOCTYPE html><html><head>
+    <meta charset="utf-8"><title>Encrypted Vault</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    </head><body>
+    <h3>Save a file</h3>
+    <input type="file" id="file"><br>
+    Pass-phrase <input id="pw" type="password">
+    <button onclick="go()">Encrypt & Upload</button>
+    <script type="module">
+    import { encode as b64e } from 'https://cdn.jsdelivr.net/npm/js-base64@3.7.2/+esm';
+    const tg  = Telegram.WebApp;             // gets user info
+    const uid = tg.initDataUnsafe?.user?.id; // numeric Telegram user_id
+    
+    function createJWT(){                    // sign with JWT_SECRET in server.js
+      const header = b64e(JSON.stringify({alg:"HS256",typ:"JWT"}));
+      const body   = b64e(JSON.stringify({sub:String(uid)}));
+      const sig    = "demo";                 // 🔒 quick-and-dirty for local test
+      return `${header}.${body}.${sig}`;
+    }
+    
+    async function go(){
+      const fileInput = document.getElementById('file');
+      if(!fileInput.files.length) return alert('Pick a file');
+      const pass = document.getElementById('pw').value;
+      const file = fileInput.files[0];
+    
+      // derive key (SHA-256 of pass-phrase for demo)
+      const key = await crypto.subtle.importKey(
+          'raw',
+          await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass)),
+          {name:'AES-GCM'}, false, ['encrypt']);
+    
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const cipher = await crypto.subtle.encrypt({name:'AES-GCM',iv},
+                       key, await file.arrayBuffer());
+    
+      const fd = new FormData();
+      fd.append('file', new Blob([cipher]), file.name);
+      fd.append('iv', b64e(iv));
+    
+      await fetch('http://localhost:5000/save', {
+         method:'POST',
+         headers:{ Authorization:`Bearer ${createJWT()}` },
+         body:fd });
+      alert('Saved!');
+    }
+    </script></body></html>
+    
