@@ -1,114 +1,393 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Encrypted Vault</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digital Vault</title>
+
+  <!-- Telegram WebApp JS is optional; page works without it -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+    :root{
+      /* Base palette (overridden if Telegram theme is present) */
+      --bg: #0f141b;
+      --panel: rgba(255,255,255,0.06);
+      --panel-border: rgba(255,255,255,0.08);
+      --text: #e7eef7;
+      --muted: #a9b6c8;
+      --accent-1: #2AABEE; /* Telegram light blue */
+      --accent-2: #229ED9; /* Telegram blue */
+      --success: #2ed573;
+      --danger: #ff6b6b;
+
+      --radius-xl: 20px;
+      --radius-lg: 14px;
+      --shadow-1: 0 10px 30px rgba(0,0,0,.35);
+      --shadow-2: 0 4px 12px rgba(0,0,0,.25);
     }
-    .container {
-      background: rgba(255,255,255,0.05);
+
+    /* Subtle animated gradient backdrop that matches Telegram’s blues */
+    body{
+      margin:0;
+      color:var(--text);
+      background:
+        radial-gradient(60% 70% at 85% 20%, rgba(34,158,217,.25) 0%, transparent 60%),
+        radial-gradient(60% 70% at 0% 100%, rgba(42,171,238,.20) 0%, transparent 55%),
+        linear-gradient(180deg, #0b1117 0%, #0f141b 100%);
+      min-height:100svh;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+      display:grid;
+      place-items:center;
+    }
+
+    .wrap{
+      width:min(960px, 92vw);
+      padding:28px;
+      border-radius: var(--radius-xl);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border:1px solid var(--panel-border);
+      box-shadow: var(--shadow-1);
+    }
+
+    header{
+      display:flex;
+      gap:16px;
+      align-items:center;
+      margin-bottom: 10px;
+    }
+    .logo{
+      width:44px; height:44px;
+      display:grid; place-items:center;
+      border-radius:12px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 6px 20px rgba(34,158,217,.45);
+    }
+    .logo svg{ width:24px; height:24px; color:white; }
+
+    h1{
+      font-size: clamp(20px, 2.2vw, 28px);
+      margin: 0 0 4px;
+      letter-spacing:.2px;
+    }
+    .sub{ color:var(--muted); margin:0 0 18px; }
+
+    .grid{
+      display:grid;
+      gap:18px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 860px){
+      .grid{ grid-template-columns: 1.25fr .75fr; }
+    }
+
+    .card{
+      background: var(--panel);
+      border:1px dashed var(--panel-border);
+      border-radius: var(--radius-lg);
+      padding:18px;
+      box-shadow: var(--shadow-2);
+    }
+
+    .drop{
+      border:2px dashed rgba(255,255,255,.15);
+      border-radius: 16px;
+      padding: 26px;
+      display:grid;
+      place-items:center;
+      gap:12px;
+      text-align:center;
+      transition: border-color .2s, background .2s;
+    }
+    .drop.dragover{
+      border-color: var(--accent-1);
+      background: rgba(34,158,217,.06);
+    }
+    .drop .hint{ color:var(--muted); font-size: 14px; }
+
+    .row{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .input{
+      position:relative;
+      flex:1 1 240px;
+    }
+    .input input{
+      width:100%;
+      padding:14px 44px 14px 14px;
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      border:1px solid var(--panel-border);
+      border-radius:12px;
+      outline:none;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+    }
+    .input input::placeholder{ color: #9fb0c4; }
+    .input input:focus{
+      border-color: var(--accent-1);
+      box-shadow: 0 0 0 3px rgba(42,171,238,.15);
+      background: rgba(255,255,255,.08);
+    }
+    .toggle{
+      position:absolute; right:8px; top:50%; translate:0 -50%;
+      background:transparent; border:0; color:var(--muted); width:32px; height:32px;
+      display:grid; place-items:center; border-radius:8px; cursor:pointer;
+    }
+    .toggle:hover{ color:var(--text); background: rgba(255,255,255,.08); }
+
+    .btn{
+      appearance:none; border:0; cursor:pointer;
+      border-radius:12px; padding:14px 18px;
+      color:white; font-weight:600; letter-spacing:.2px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 10px 24px rgba(34,158,217,.35);
+      transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
+      display:inline-flex; align-items:center; gap:10px;
+    }
+    .btn:hover{ filter:brightness(1.05); box-shadow: 0 12px 28px rgba(34,158,217,.42); }
+    .btn:active{ transform: translateY(1px); }
+
+    .tiny{ font-size:12px; color:var(--muted); margin-top:8px; }
+
+    .meta{
+      display:grid; gap:10px;
+    }
+    .pill{
+      display:flex; align-items:center; gap:10px;
+      padding:12px 14px; border-radius:12px;
+      background: rgba(255,255,255,.05); border:1px solid var(--panel-border);
+      color:var(--muted);
+    }
+    .pill strong{ color:var(--text); }
+
+    .progress{ height:8px; background: rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
+    .bar{ height:100%; width:0%; background: linear-gradient(90deg, var(--accent-1), var(--accent-2)); transition: width .25s; }
+
+    .toast{
+      position:fixed; left:50%; bottom:20px; translate:-50% 10px;
+      background: rgba(18,22,28,.9); color:var(--text);
+      border:1px solid var(--panel-border);
       backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 2rem;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-      width: 90%;
-      max-width: 400px;
-      text-align: center;
+      -webkit-backdrop-filter: blur(10px);
+      padding:12px 16px; border-radius:12px; box-shadow: var(--shadow-2);
+      opacity:0; pointer-events:none; transition: opacity .2s, translate .2s;
     }
-    h1 {
-      margin-bottom: 1rem;
-      font-size: 1.75rem;
-      font-weight: 600;
-    }
-    label {
-      display: block;
-      text-align: left;
-      margin-bottom: 0.5rem;
-      font-weight: 500;
-    }
-    input[type="file"], input[type="password"] {
-      width: 100%;
-      padding: 0.5rem;
-      margin-bottom: 1rem;
-      border: none;
-      border-radius: 6px;
-      font-size: 1rem;
-    }
-    button {
-      background-color: #fff;
-      color: #2a5298;
-      border: none;
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-      font-weight: 600;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    button:hover {
-      background-color: #f0f0f0;
-    }
-    .footer {
-      margin-top: 1.5rem;
-      font-size: 0.875rem;
-      color: rgba(255,255,255,0.7);
+    .toast.show{ opacity:1; translate:-50% 0; pointer-events:auto; }
+
+    /* Light scheme if opened in a light Telegram theme (or system light) */
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg: #f6f8fb;
+        --text:#0c1a2b;
+        --muted:#415268;
+        --panel: rgba(255,255,255,.75);
+        --panel-border: rgba(8,25,48,.08);
+      }
+      body{
+        background:
+          radial-gradient(60% 70% at 85% 20%, rgba(34,158,217,.20) 0%, transparent 60%),
+          radial-gradient(60% 70% at 0% 100%, rgba(42,171,238,.18) 0%, transparent 55%),
+          linear-gradient(180deg, #ecf3f9 0%, #f6f8fb 100%);
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Save a File</h1>
-    <label for="file">Choose file</label>
-    <input type="file" id="file" />
-    <label for="pw">Pass‑phrase</label>
-    <input type="password" id="pw" placeholder="Enter password" />
-    <button onclick="go()">Encrypt &amp; Upload</button>
-    <div class="footer">Encrypted Vault • Powered by Telegram WebApp</div>
-  </div>
-  <script type="module">
-    import { encode as b64e } from 'https://cdn.jsdelivr.net/npm/js-base64@3.7.2/+esm';
-    const tg = Telegram.WebApp;
-    const uid = tg.initDataUnsafe?.user?.id;
-    function createJWT() {
-      const header = b64e(JSON.stringify({alg:'HS256',typ:'JWT'}));
-      const body   = b64e(JSON.stringify({sub:String(uid)}));
-      const sig    = 'demo';
-      return `${header}.${body}.${sig}`;
+  <main class="wrap" role="main" aria-labelledby="title">
+    <header>
+      <div class="logo" aria-hidden="true">
+        <!-- safe icon -->
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M5 4h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" />
+          <circle cx="12" cy="11.5" r="3.2" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 14.8v3.2M6 8h4" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </div>
+      <div>
+        <h1 id="title">Digital Vault</h1>
+        <p class="sub">Encrypt & store files securely. Looks right at home in Telegram.</p>
+      </div>
+    </header>
+
+    <section class="grid" aria-label="Upload panel">
+      <!-- Left: controls -->
+      <div class="card">
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a file or drop here">
+          <div>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" style="color:var(--accent-1)">
+              <path d="M12 16V4m0 0l-4 4m4-4l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M20 16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight:600;">Drop a file here or click to choose</div>
+            <div class="hint">Max 50 MB • AES-256 client-side encryption</div>
+          </div>
+          <input id="file" type="file" hidden />
+        </div>
+
+        <div class="tiny" id="fileName" aria-live="polite"></div>
+
+        <div class="row" style="margin-top:14px">
+          <label class="input" aria-label="Passphrase">
+            <input id="pw" type="password" placeholder="Enter passphrase" autocomplete="new-password" />
+            <button class="toggle" type="button" id="showPw" aria-label="Show passphrase">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="1.6"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/>
+              </svg>
+            </button>
+          </label>
+
+          <button class="btn" id="go">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12h14M13 5l7 7-7 7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Encrypt & Upload
+          </button>
+        </div>
+
+        <div class="progress" style="margin-top:14px">
+          <div class="bar" id="bar"></div>
+        </div>
+        <div class="tiny">We never send your passphrase to the server.</div>
+      </div>
+
+      <!-- Right: meta/status -->
+      <div class="meta">
+        <div class="pill">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:var(--accent-1)">
+            <path d="M12 3v4M12 17v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M3 12h4M17 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+          <span>Theme: <strong id="theme">Auto</strong></span>
+        </div>
+
+        <div class="pill">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:var(--accent-1)">
+            <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M4 9h16" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+          <span>Status: <strong id="status">Idle</strong></span>
+        </div>
+
+        <div class="pill">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:var(--accent-1)">
+            <path d="M12 6v12M6 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+          <span>Roadmap: decrypt & share links next</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">Done!</div>
+
+  <script>
+    // Optional: adapt to Telegram WebApp theme params
+    (function syncWithTelegram(){
+      const tg = window.Telegram?.WebApp;
+      if(!tg) return;
+
+      tg.ready();
+
+      // Pull Telegram theme parameters if present
+      const p = tg.themeParams || {};
+      const css = (name, fallback)=> p[name] ? `#${p[name]}` : fallback;
+
+      // Derive accessible variables
+      const bg = css('bg_color', null);
+      const text = css('text_color', null);
+      const hint = css('hint_color', null);
+      const link = css('link_color', null);
+
+      if(bg) document.documentElement.style.setProperty('--bg', bg);
+      if(text) document.documentElement.style.setProperty('--text', text);
+      if(hint) document.documentElement.style.setProperty('--muted', hint);
+      if(link){
+        document.documentElement.style.setProperty('--accent-1', link);
+        document.documentElement.style.setProperty('--accent-2', link);
+      }
+
+      // Update theme label
+      document.getElementById('theme').textContent = tg.colorScheme?.toUpperCase?.() || 'Telegram';
+    })();
+
+    // UI handlers
+    const drop = document.getElementById('drop');
+    const fileInput = document.getElementById('file');
+    const fileName = document.getElementById('fileName');
+    const pw = document.getElementById('pw');
+    const showPw = document.getElementById('showPw');
+    const go = document.getElementById('go');
+    const bar = document.getElementById('bar');
+    const toast = document.getElementById('toast');
+    const statusEl = document.getElementById('status');
+
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(()=> toast.classList.remove('show'), 2200);
     }
-    async function go() {
-      const fi = document.getElementById('file');
-      if (!fi.files.length) return alert('Pick a file');
-      const pass = document.getElementById('pw').value;
-      const file = fi.files[0];
-      const key = await crypto.subtle.importKey(
-        'raw',
-        await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass)),
-        {name:'AES-GCM'}, false, ['encrypt']
-      );
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const cipher = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, await file.arrayBuffer());
-      const fd = new FormData();
-      fd.append('file', new Blob([cipher]), file.name);
-      fd.append('iv', b64e(iv));
-      await fetch('https://your-api.example.com/save', {
-        method:'POST',
-        headers:{ Authorization:`Bearer ${createJWT()}` },
-        body:fd
-      });
-      alert('Saved!');
+
+    function setStatus(t){ statusEl.textContent = t; }
+
+    drop.addEventListener('click', ()=> fileInput.click());
+    drop.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); } });
+
+    ['dragenter','dragover'].forEach(evt =>
+      drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.add('dragover'); })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.remove('dragover'); })
+    );
+    drop.addEventListener('drop', e => {
+      const f = e.dataTransfer.files?.[0]; if(!f) return;
+      fileInput.files = e.dataTransfer.files;
+      fileName.textContent = f.name + ' • ' + new Intl.NumberFormat().format(f.size) + ' bytes';
+    });
+
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files?.[0];
+      fileName.textContent = f ? `${f.name} • ${new Intl.NumberFormat().format(f.size)} bytes` : '';
+    });
+
+    showPw.addEventListener('click', ()=>{
+      pw.type = pw.type === 'password' ? 'text' : 'password';
+      showPw.setAttribute('aria-label', pw.type === 'password' ? 'Show passphrase' : 'Hide passphrase');
+    });
+
+    // Fake encryption/upload demo (replace with real logic)
+    async function fakeEncryptAndUpload(file, passphrase){
+      // Simulate streaming progress
+      setStatus('Encrypting…');
+      for(let i=0;i<=40;i++){ bar.style.width = (i*2.5)+'%'; await new Promise(r=>setTimeout(r, 15)); }
+
+      setStatus('Uploading…');
+      for(let i=40;i<=100;i++){ bar.style.width = i+'%'; await new Promise(r=>setTimeout(r, 10)); }
+
+      setStatus('Complete');
+      showToast('Encrypted & uploaded successfully');
     }
+
+    go.addEventListener('click', async ()=>{
+      const f = fileInput.files?.[0];
+      if(!f){ showToast('Choose a file first'); return; }
+      if(!pw.value || pw.value.length < 6){ showToast('Passphrase too short'); pw.focus(); return; }
+      bar.style.width = '0%';
+      try{
+        await fakeEncryptAndUpload(f, pw.value);
+      }catch(err){
+        console.error(err);
+        setStatus('Error');
+        showToast('Something went wrong');
+        bar.style.width = '0%';
+      }
+    });
   </script>
 </body>
 </html>
