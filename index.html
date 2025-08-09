@@ -119,7 +119,7 @@
     }
     .input input{
       width:100%;
-      padding:14px 44px 14px 14px;
+      padding:14px 74px 14px 14px; /* room for two toggles */
       background: rgba(255,255,255,.06);
       color:var(--text);
       border:1px solid var(--panel-border);
@@ -139,6 +139,7 @@
       display:grid; place-items:center; border-radius:8px; cursor:pointer;
     }
     .toggle:hover{ color:var(--text); background: rgba(255,255,255,.08); }
+    .toggle.secondary{ right:44px; } /* the ⚡ button sits left of the eye */
 
     .btn{
       appearance:none; border:0; cursor:pointer;
@@ -236,6 +237,13 @@
         <div class="row" style="margin-top:14px">
           <label class="input" aria-label="Passphrase">
             <input id="pw" type="password" placeholder="Enter passphrase" autocomplete="new-password" />
+            <!-- Generate key (left) -->
+            <button class="toggle secondary" type="button" id="genKey" aria-label="Generate strong key">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v6M12 21v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M3 12h6M21 12h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <!-- Show/Hide (right) -->
             <button class="toggle" type="button" id="showPw" aria-label="Show passphrase">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="1.6"/>
@@ -288,18 +296,16 @@
   <div class="toast" id="toast" role="status" aria-live="polite">Done!</div>
 
   <script>
-    // Optional: adapt to Telegram WebApp theme params
+    // -------- Telegram theming (optional) --------
     (function syncWithTelegram(){
       const tg = window.Telegram?.WebApp;
       if(!tg) return;
 
       tg.ready();
 
-      // Pull Telegram theme parameters if present
       const p = tg.themeParams || {};
       const css = (name, fallback)=> p[name] ? `#${p[name]}` : fallback;
 
-      // Derive accessible variables
       const bg = css('bg_color', null);
       const text = css('text_color', null);
       const hint = css('hint_color', null);
@@ -313,16 +319,16 @@
         document.documentElement.style.setProperty('--accent-2', link);
       }
 
-      // Update theme label
       document.getElementById('theme').textContent = tg.colorScheme?.toUpperCase?.() || 'Telegram';
     })();
 
-    // UI handlers
+    // -------- UI refs --------
     const drop = document.getElementById('drop');
     const fileInput = document.getElementById('file');
     const fileName = document.getElementById('fileName');
     const pw = document.getElementById('pw');
     const showPw = document.getElementById('showPw');
+    const genKey = document.getElementById('genKey');
     const go = document.getElementById('go');
     const bar = document.getElementById('bar');
     const toast = document.getElementById('toast');
@@ -333,9 +339,9 @@
       toast.classList.add('show');
       setTimeout(()=> toast.classList.remove('show'), 2200);
     }
-
     function setStatus(t){ statusEl.textContent = t; }
 
+    // -------- Drag & drop --------
     drop.addEventListener('click', ()=> fileInput.click());
     drop.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); } });
 
@@ -356,35 +362,116 @@
       fileName.textContent = f ? `${f.name} • ${new Intl.NumberFormat().format(f.size)} bytes` : '';
     });
 
+    // -------- Passphrase toggles --------
     showPw.addEventListener('click', ()=>{
       pw.type = pw.type === 'password' ? 'text' : 'password';
       showPw.setAttribute('aria-label', pw.type === 'password' ? 'Show passphrase' : 'Hide passphrase');
     });
 
-    // Fake encryption/upload demo (replace with real logic)
-    async function fakeEncryptAndUpload(file, passphrase){
-      // Simulate streaming progress
-      setStatus('Encrypting…');
-      for(let i=0;i<=40;i++){ bar.style.width = (i*2.5)+'%'; await new Promise(r=>setTimeout(r, 15)); }
+    // Generate strong key (Base64URL of 32 random bytes)
+    function b64u(buf){
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      return b64.replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
+    }
+    function generateStrongKeyBase64Url(bytes = 32){
+      const arr = crypto.getRandomValues(new Uint8Array(bytes));
+      return b64u(arr); // ~43 chars
+    }
+    genKey.addEventListener('click', async ()=>{
+      const key = generateStrongKeyBase64Url();
+      pw.value = key;
+      try{
+        await navigator.clipboard.writeText(key);
+        showToast('Key generated & copied');
+      }catch{
+        showToast('Key generated—copy it and store safely');
+      }
+    });
 
-      setStatus('Uploading…');
-      for(let i=40;i<=100;i++){ bar.style.width = i+'%'; await new Promise(r=>setTimeout(r, 10)); }
+    // =========================================================
+    // REAL CLIENT‑SIDE ENCRYPTION + UPLOAD TO N8N
+    // =========================================================
 
-      setStatus('Complete');
-      showToast('Encrypted & uploaded successfully');
+    // TODO: replace with your live n8n webhook URL
+    const N8N_UPLOAD_WEBHOOK = "https://YOUR-N8N.DOMAIN/webhook/vault-upload";
+    const PBKDF2_ITERS = 310000;
+
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+
+    async function deriveKeyFromPassphrase(passphrase, salt){
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw', enc.encode(passphrase), {name:'PBKDF2'}, false, ['deriveKey']
+      );
+      return await crypto.subtle.deriveKey(
+        {name:'PBKDF2', salt, iterations: PBKDF2_ITERS, hash:'SHA-256'},
+        keyMaterial,
+        {name:'AES-GCM', length:256},
+        false,
+        ['encrypt','decrypt']
+      );
     }
 
+    async function encryptFileWithPassphrase(file, passphrase){
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv   = crypto.getRandomValues(new Uint8Array(12));
+      const key  = await deriveKeyFromPassphrase(passphrase, salt);
+      const data = await file.arrayBuffer();
+
+      const ct   = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+      return { ct: new Uint8Array(ct), salt, iv };
+    }
+
+    async function encryptAndUpload(file, passphrase){
+      setStatus('Encrypting…'); bar.style.width = '0%';
+
+      const {ct, salt, iv} = await encryptFileWithPassphrase(file, passphrase);
+      bar.style.width = '40%';
+
+      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id ?? null;
+      const meta = {
+        v: 1,
+        algo: 'AES-256-GCM',
+        kdf: 'PBKDF2-SHA256',
+        iter: PBKDF2_ITERS,
+        salt: b64u(salt),
+        iv:   b64u(iv),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        createdAt: new Date().toISOString(),
+        telegramUserId: tgUserId
+      };
+
+      setStatus('Uploading…');
+
+      const fd = new FormData();
+      fd.append('file', new Blob([ct], {type:'application/octet-stream'}), file.name + '.enc');
+      fd.append('meta', JSON.stringify(meta));
+
+      const res = await fetch(N8N_UPLOAD_WEBHOOK, { method:'POST', body: fd });
+      if(!res.ok) throw new Error('Upload failed');
+
+      const payload = await res.json().catch(()=> ({}));
+      bar.style.width = '100%';
+      setStatus('Complete');
+      showToast('Encrypted & uploaded');
+
+      console.log('Upload result:', payload);
+    }
+
+    // -------- Primary CTA --------
     go.addEventListener('click', async ()=>{
       const f = fileInput.files?.[0];
       if(!f){ showToast('Choose a file first'); return; }
-      if(!pw.value || pw.value.length < 6){ showToast('Passphrase too short'); pw.focus(); return; }
+      if(!pw.value || pw.value.length < 10){ showToast('Use a stronger passphrase'); pw.focus(); return; }
       bar.style.width = '0%';
       try{
-        await fakeEncryptAndUpload(f, pw.value);
+        await encryptAndUpload(f, pw.value);
       }catch(err){
         console.error(err);
         setStatus('Error');
-        showToast('Something went wrong');
+        showToast(err.message || 'Something went wrong');
         bar.style.width = '0%';
       }
     });
